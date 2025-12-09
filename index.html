@@ -300,15 +300,6 @@
             letter-spacing: 0.05em;
         }
 
-        .confidence-score {
-            background: var(--index-black);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 500;
-        }
-
         .profile-url {
             color: var(--index-black);
             text-decoration: none;
@@ -479,9 +470,8 @@
                 {
                 <span class="string">"platform_slug"</span>: <span class="string">"twitter"</span>,
                 <span class="string">"profile_url"</span>: <span class="string">"https://twitter.com/johnsmith"</span>,
-                <span class="string">"is_self_proclaimed_from_input"</span>: <span class="keyword">true</span>,
+                <span class="string">"is_self_proclaimed"</span>: <span class="keyword">true</span>,
                 <span class="string">"is_self_referring"</span>: <span class="keyword">false</span>,
-                <span class="string">"confidence"</span>: <span class="keyword">0.95</span>,
                 <span class="string">"match_reasoning"</span>: <span class="string">"Direct mention in input"</span>,
                 <span class="string">"profile_snippet"</span>: <span class="string">"Software Engineer
                     @Google..."</span>
@@ -693,13 +683,12 @@
                         <div class="profile-card">
                             <div class="profile-header">
                                 <div class="profile-platform">${profile.platform_slug}</div>
-                                <div class="confidence-score">${Math.round(profile.confidence * 100)}%</div>
                             </div>
                             
                             <a href="${profile.profile_url}" target="_blank" class="profile-url">${profile.profile_url}</a>
                             
                             <div class="profile-flags">
-                                ${profile.is_self_proclaimed_from_input ? '<span class="flag self-proclaimed">Self-proclaimed</span>' : ''}
+                                ${profile.is_self_proclaimed ? '<span class="flag self-proclaimed">Self-proclaimed</span>' : ''}
                                 ${profile.is_self_referring ? '<span class="flag self-referring">Self-referring</span>' : ''}
                             </div>
                             

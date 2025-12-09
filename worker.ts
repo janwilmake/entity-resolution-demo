@@ -11,9 +11,8 @@ interface ResolutionRequest {
 interface ProfileResult {
   platform_slug: string;
   profile_url: string;
-  is_self_proclaimed_from_input: boolean;
+  is_self_proclaimed: boolean;
   is_self_referring: boolean;
-  confidence: number;
   match_reasoning: string;
   profile_snippet: string;
 }
@@ -156,24 +155,20 @@ async function handleResolutionSubmission(request: Request): Promise<Response> {
 
     const input = `You are a person entity resolution system. Given information about a person, find and return their digital profiles across various platforms.
 
-Input: ${body.input}
+Input: 
+"""
+${body.input}
+"""
 
 Instructions:
-1. Analyze the input for any directly mentioned social media handles, usernames, email addresses, names, or other identifying information
+
+1. Analyze the input for any directly mentioned social media handles, usernames, email addresses, names, or other identifying information.
 2. Search for and identify profiles across platforms like Twitter, LinkedIn, GitHub, Instagram, Facebook, TikTok, etc.
-3. For each profile found, determine:
-   - Whether it was directly mentioned in the input (is_self_proclaimed_from_input)
-   - Whether the profile links to or references other profiles you found (is_self_referring)  
-   - Your confidence level in the match (0.0 to 1.0)
-   - Clear reasoning for why you believe this profile belongs to the same person
-   - A brief snippet or description from the profile
+3. For each profile found, determine is_self_proclaimed, is_self_referring, match_reasoning, and profile_snippet
+4. If no profiles can be found, return an empty profiles array
 
-4. Pay attention to cross-references between profiles to increase confidence
-5. Return only profiles you have reasonable confidence belong to the same person
-6. If no profiles can be found, return an empty profiles array
-
-Be thorough but conservative - only return profiles you're reasonably confident about.`;
-
+Be thorough but conservative - only return profiles you're confident about.
+`;
     const client = new Parallel({ apiKey });
 
     const output_json_schema = {
@@ -194,21 +189,19 @@ Be thorough but conservative - only return profiles you're reasonably confident 
                 type: "string",
                 description: "Full URL to the profile",
               },
-              is_self_proclaimed_from_input: {
+              is_self_proclaimed: {
                 type: "boolean",
                 description:
-                  "Whether this profile was directly mentioned in the input, or referred to in one of the input profiles.",
+                  "Whether this profile was discovered through the input's chain of references. " +
+                  "true if: (1) directly mentioned in the original input, " +
+                  "(2) linked from a profile mentioned in the input, or " +
+                  "(3) linked from any profile in this chain (transitive relationship). " +
+                  "false if discovered only through external search without a self-reference chain.",
               },
               is_self_referring: {
                 type: "boolean",
                 description:
-                  "Whether this profile links back to other found profiles",
-              },
-              confidence: {
-                type: "number",
-                minimum: 0,
-                maximum: 1,
-                description: "Confidence score for this match (0-1)",
+                  "Whether this profile links back to input profile(s) or other found profile(s)",
               },
               match_reasoning: {
                 type: "string",
@@ -223,9 +216,8 @@ Be thorough but conservative - only return profiles you're reasonably confident 
             required: [
               "platform_slug",
               "profile_url",
-              "is_self_proclaimed_from_input",
+              "is_self_proclaimed",
               "is_self_referring",
-              "confidence",
               "match_reasoning",
               "profile_snippet",
             ],
@@ -236,7 +228,7 @@ Be thorough but conservative - only return profiles you're reasonably confident 
 
     const result = await client.taskRun.create({
       input,
-      processor: "core",
+      processor: "pro",
       task_spec: {
         output_schema: { json_schema: output_json_schema, type: "json" },
       },
