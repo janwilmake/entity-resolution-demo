@@ -1,6 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 /// <reference lib="esnext" />
 
+import { Parallel } from "parallel-web";
 export interface Env {}
 
 interface ResolutionRequest {
@@ -21,11 +22,16 @@ interface ResolutionResult {
   profiles: ProfileResult[];
 }
 
+interface TaskResult {
+  run: { status: string };
+  output: { content: ResolutionResult };
+}
+
 export default {
   async fetch(
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    ctx: ExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
 
@@ -75,10 +81,10 @@ function getCORSHeaders(): Record<string, string> {
 
 async function handleOAuthCallback(
   request: Request,
-  url: URL
+  url: URL,
 ): Promise<Response> {
   const code = url.searchParams.get("code");
-
+  const isLocalhost = new URL(request.url).hostname === "localhost";
   if (!code) {
     return new Response("Missing authorization code", { status: 400 });
   }
@@ -103,24 +109,29 @@ async function handleOAuthCallback(
           redirect_uri: `${url.origin}/callback`,
           code_verifier: codeVerifier,
         }),
-      }
+      },
     );
 
-    const tokenData = await tokenResponse.json();
+    const tokenData = await tokenResponse.json<{
+      access_token?: string;
+      error?: string;
+    }>();
 
     if (tokenData.access_token) {
-      const response = new Response("", {
-        status: 302,
-        headers: {
-          Location: "/?auth=success",
-          "Set-Cookie": [
-            `parallel_api_key=${tokenData.access_token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`,
-            "code_verifier=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
-          ].join(", "),
-        },
-      });
+      const headers = new Headers({ Location: "/?auth=success" });
+      const securePart = isLocalhost ? `` : ` Secure;`;
+      headers.append(
+        "Set-Cookie",
+        `parallel_api_key=${tokenData.access_token}; Path=/; ${securePart} SameSite=Lax; Max-Age=2592000`,
+      );
+      headers.append(
+        "Set-Cookie",
+        "code_verifier=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+      );
+      const response = new Response("", { status: 302, headers });
       return response;
     } else {
+      console.log({ tokenData });
       return new Response("Failed to exchange token", { status: 400 });
     }
   } catch (error) {
@@ -143,69 +154,7 @@ async function handleResolutionSubmission(request: Request): Promise<Response> {
       });
     }
 
-    // Create the task payload for person entity resolution
-    const taskPayload = {
-      task_spec: {
-        output_schema: {
-          type: "object",
-          properties: {
-            profiles: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  platform_slug: {
-                    type: "string",
-                    description:
-                      "Platform identifier (e.g., 'twitter', 'linkedin', 'github')",
-                  },
-                  profile_url: {
-                    type: "string",
-                    description: "Full URL to the profile",
-                  },
-                  is_self_proclaimed_from_input: {
-                    type: "boolean",
-                    description:
-                      "Whether this profile was directly mentioned in the input",
-                  },
-                  is_self_referring: {
-                    type: "boolean",
-                    description:
-                      "Whether this profile links back to other found profiles",
-                  },
-                  confidence: {
-                    type: "number",
-                    minimum: 0,
-                    maximum: 1,
-                    description: "Confidence score for this match (0-1)",
-                  },
-                  match_reasoning: {
-                    type: "string",
-                    description:
-                      "Explanation of why this profile matches the input person",
-                  },
-                  profile_snippet: {
-                    type: "string",
-                    description:
-                      "Brief excerpt or description from the profile",
-                  },
-                },
-                required: [
-                  "platform_slug",
-                  "profile_url",
-                  "is_self_proclaimed_from_input",
-                  "is_self_referring",
-                  "confidence",
-                  "match_reasoning",
-                  "profile_snippet",
-                ],
-              },
-            },
-          },
-          required: ["profiles"],
-        },
-      },
-      input: `You are a person entity resolution system. Given information about a person, find and return their digital profiles across various platforms.
+    const input = `You are a person entity resolution system. Given information about a person, find and return their digital profiles across various platforms.
 
 Input: ${body.input}
 
@@ -223,20 +172,75 @@ Instructions:
 5. Return only profiles you have reasonable confidence belong to the same person
 6. If no profiles can be found, return an empty profiles array
 
-Be thorough but conservative - only return profiles you're reasonably confident about.`,
-      processor: "core",
+Be thorough but conservative - only return profiles you're reasonably confident about.`;
+
+    const client = new Parallel({ apiKey });
+
+    const output_json_schema = {
+      type: "object",
+      required: ["profiles"],
+      properties: {
+        profiles: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              platform_slug: {
+                type: "string",
+                description:
+                  "Platform identifier (e.g., 'twitter', 'linkedin', 'github')",
+              },
+              profile_url: {
+                type: "string",
+                description: "Full URL to the profile",
+              },
+              is_self_proclaimed_from_input: {
+                type: "boolean",
+                description:
+                  "Whether this profile was directly mentioned in the input, or referred to in one of the input profiles.",
+              },
+              is_self_referring: {
+                type: "boolean",
+                description:
+                  "Whether this profile links back to other found profiles",
+              },
+              confidence: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+                description: "Confidence score for this match (0-1)",
+              },
+              match_reasoning: {
+                type: "string",
+                description:
+                  "Explanation of why this profile matches the input person",
+              },
+              profile_snippet: {
+                type: "string",
+                description: "Brief excerpt or description from the profile",
+              },
+            },
+            required: [
+              "platform_slug",
+              "profile_url",
+              "is_self_proclaimed_from_input",
+              "is_self_referring",
+              "confidence",
+              "match_reasoning",
+              "profile_snippet",
+            ],
+          },
+        },
+      },
     };
 
-    const response = await fetch("https://api.parallel.ai/v1/tasks/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
+    const result = await client.taskRun.create({
+      input,
+      processor: "core",
+      task_spec: {
+        output_schema: { json_schema: output_json_schema, type: "json" },
       },
-      body: JSON.stringify(taskPayload),
     });
-
-    const result = await response.json();
 
     if (result.run_id) {
       return new Response(JSON.stringify({ trun_id: result.run_id }), {
@@ -246,6 +250,7 @@ Be thorough but conservative - only return profiles you're reasonably confident 
         },
       });
     } else {
+      console.dir(result.error?.detail, { depth: 99 });
       return new Response(
         JSON.stringify({ error: "Failed to create resolution task" }),
         {
@@ -254,7 +259,7 @@ Be thorough but conservative - only return profiles you're reasonably confident 
             "Content-Type": "application/json",
             ...getCORSHeaders(),
           },
-        }
+        },
       );
     }
   } catch (error) {
@@ -266,14 +271,14 @@ Be thorough but conservative - only return profiles you're reasonably confident 
           "Content-Type": "application/json",
           ...getCORSHeaders(),
         },
-      }
+      },
     );
   }
 }
 
 async function handleResolutionResult(
   request: Request,
-  trunId: string
+  trunId: string,
 ): Promise<Response> {
   try {
     const apiKey = getApiKey(request);
@@ -290,14 +295,10 @@ async function handleResolutionResult(
 
     const response = await fetch(
       `https://api.parallel.ai/v1/tasks/runs/${trunId}/result`,
-      {
-        headers: {
-          "x-api-key": apiKey,
-        },
-      }
+      { headers: { "x-api-key": apiKey } },
     );
 
-    const result = await response.json();
+    const result = await response.json<TaskResult>();
 
     if (result.run && result.run.status === "completed" && result.output) {
       // Extract the profiles from the output content
@@ -326,7 +327,7 @@ async function handleResolutionResult(
             "Content-Type": "application/json",
             ...getCORSHeaders(),
           },
-        }
+        },
       );
     }
   } catch (error) {
@@ -338,7 +339,7 @@ async function handleResolutionResult(
           "Content-Type": "application/json",
           ...getCORSHeaders(),
         },
-      }
+      },
     );
   }
 }

@@ -11,5 +11,6 @@
       "custom_domain": true,
       "pattern": "entity-resolution-demo.parallel.ai"
     }
-  ]
+  ],
+  "env": { "localhost": { "routes": [] } }
 }
