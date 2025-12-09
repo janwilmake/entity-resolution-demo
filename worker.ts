@@ -167,7 +167,7 @@ Instructions:
 3. For each profile found, determine is_self_proclaimed, is_self_referring, match_reasoning, and profile_snippet
 4. If no profiles can be found, return an empty profiles array
 
-Be thorough but conservative - only return profiles you're confident about.
+Be thorough but conservative - only return profiles you're confident about belong to the same person.
 `;
     const client = new Parallel({ apiKey });
 
