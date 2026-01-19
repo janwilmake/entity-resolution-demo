@@ -1,4 +1,4 @@
-> ![WARNING]
+> [!WARNING]
 >
 > This has moved to [official location](https://github.com/parallel-web/parallel-cookbook/tree/main/typescript-recipes/parallel-entity-resolution)
 
