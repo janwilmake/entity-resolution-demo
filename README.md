@@ -1,3 +1,7 @@
+> ![WARNING]
+>
+> This has moved to [official location](https://github.com/parallel-web/parallel-cookbook/tree/main/typescript-recipes/parallel-entity-resolution)
+
 # Person Entity Resolution API
 
 > AI-powered digital identity resolution across social platforms
